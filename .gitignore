@@ -2,7 +2,10 @@
 kanban
 
 # Database and persistent data
-data/
+data/*
 
 # macOS
 .DS_Store
+
+# Claude
+CLAUDE.md
