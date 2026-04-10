@@ -11,6 +11,7 @@
   --muted-light: #888888;
   --accent: #6366f1;
   --accent-hover: #4f46e5;
+  --accent-subtle: color-mix(in srgb, var(--accent) 7%, transparent);
   --danger: #ef4444;
   --danger-hover: #dc2626;
   --warning: #f59e0b;
@@ -318,7 +319,7 @@ main {
   transition: background 0.1s, color 0.1s;
   flex-shrink: 0;
 }
-.add-card-btn:hover { background: rgba(99,102,241,0.07); color: var(--accent); }
+.add-card-btn:hover { background: var(--accent-subtle); color: var(--accent); }
 
 /* ---- ADD COLUMN ---- */
 .add-column-btn {
@@ -339,7 +340,7 @@ main {
   align-self: flex-start;
   user-select: none;
 }
-.add-column-btn:hover { background: rgba(99,102,241,0.07); border-color: var(--accent); color: var(--accent); }
+.add-column-btn:hover { background: var(--accent-subtle); border-color: var(--accent); color: var(--accent); }
 
 /* ---- BUTTONS ---- */
 .btn-primary {

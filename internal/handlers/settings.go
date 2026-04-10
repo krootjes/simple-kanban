@@ -15,15 +15,20 @@ func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
 		appName = "Kanban"
 	}
 
+	var accentColor string
+	h.db.QueryRow(`SELECT value FROM global_settings WHERE key = 'accent_color'`).Scan(&accentColor)
+
 	writeJSON(w, http.StatusOK, map[string]string{
-		"app_name": appName,
-		"username": user.Username,
+		"app_name":     appName,
+		"username":     user.Username,
+		"accent_color": accentColor,
 	})
 }
 
 func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		AppName string `json:"app_name"`
+		AppName     string `json:"app_name"`
+		AccentColor string `json:"accent_color"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request")
@@ -38,7 +43,15 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "db error")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"app_name": req.AppName})
+
+	if req.AccentColor != "" {
+		h.db.Exec(
+			`INSERT OR REPLACE INTO global_settings (key, value) VALUES ('accent_color', ?)`,
+			req.AccentColor,
+		)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"app_name": req.AppName, "accent_color": req.AccentColor})
 }
 
 func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
