@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="settings-page">
+  <header class="header">
+    <a href="/" class="btn-ghost settings-back" id="back-link">← Back</a>
+    <span class="logo" id="settings-logo">Kanban</span>
+    <span class="settings-heading">Settings</span>
+    <div class="header-right">
+      <button class="btn-ghost" onclick="logout()">Logout</button>
+    </div>
+  </header>
+
+  <main class="settings-main">
+    <div class="settings-container">
+
+      <!-- General -->
+      <section class="settings-card">
+        <h2 class="settings-section-title" id="lbl-general">General</h2>
+        <form id="form-app-settings" onsubmit="saveAppSettings(event)">
+          <div class="form-group">
+            <label id="lbl-app-name">App Name</label>
+            <input type="text" id="app-name-val" placeholder="Kanban">
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary" id="btn-save-app">Save</button>
+            <span id="msg-app" class="settings-msg hidden"></span>
+          </div>
+        </form>
+      </section>
+
+      <!-- Tags -->
+      <section class="settings-card">
+        <h2 class="settings-section-title" id="lbl-tags-heading">Tags</h2>
+        <div id="settings-tags-list" class="settings-tags-list"></div>
+        <form id="form-add-tag" onsubmit="addTag(event)">
+          <div class="tag-add-row">
+            <input type="text" id="new-tag-name" placeholder="Tag name" required>
+            <input type="color" id="new-tag-color" value="#6366f1" title="Pick color">
+            <button type="submit" class="btn-primary" id="btn-add-tag">Add</button>
+          </div>
+          <span id="msg-tag" class="settings-msg hidden"></span>
+        </form>
+      </section>
+
+      <!-- Account -->
+      <section class="settings-card">
+        <h2 class="settings-section-title" id="lbl-account">Account</h2>
+        <div class="account-forms-grid">
+          <div>
+            <h3 class="settings-sub-heading" id="lbl-change-username">Change Username</h3>
+            <form id="form-username" onsubmit="changeUsername(event)">
+              <div class="form-group">
+                <label id="lbl-new-username">New Username</label>
+                <input type="text" id="new-username-val" autocomplete="username">
+              </div>
+              <div class="form-group">
+                <label id="lbl-pw-for-username">Current Password</label>
+                <input type="password" id="pw-for-username" autocomplete="current-password">
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="btn-primary" id="btn-change-username">Change Username</button>
+                <span id="msg-username" class="settings-msg hidden"></span>
+              </div>
+            </form>
+          </div>
+          <div>
+            <h3 class="settings-sub-heading" id="lbl-change-password">Change Password</h3>
+            <form id="form-password" onsubmit="changePassword(event)">
+              <div class="form-group">
+                <label id="lbl-current-pw">Current Password</label>
+                <input type="password" id="current-pw" autocomplete="current-password">
+              </div>
+              <div class="form-group">
+                <label id="lbl-new-pw">New Password</label>
+                <input type="password" id="new-pw" autocomplete="new-password">
+              </div>
+              <div class="form-group">
+                <label id="lbl-confirm-pw">Confirm New Password</label>
+                <input type="password" id="confirm-pw" autocomplete="new-password">
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="btn-primary" id="btn-change-pw">Change Password</button>
+                <span id="msg-password" class="settings-msg hidden"></span>
+              </div>
+            </form>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <script src="/locale/en.js"></script>
+  <script>
+    const L = window.LOCALE || {};
+    const t = k => L[k] || k;
+
+    async function apiFetch(path, method = 'GET', body = null) {
+      const opts = { method, headers: {} };
+      if (body !== null) {
+        opts.headers['Content-Type'] = 'application/json';
+        opts.body = JSON.stringify(body);
+      }
+      const res = await fetch(path, opts);
+      if (res.status === 401) { window.location.href = '/login.html'; throw new Error('unauthorized'); }
+      if (res.status === 204) return null;
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw Object.assign(new Error(d.error || res.statusText), { status: res.status });
+      }
+      return res.json();
+    }
+
+    function logout() {
+      fetch('/auth/logout', { method: 'POST' }).then(() => { window.location.href = '/login.html'; });
+    }
+
+    function showMsg(id, text, isError = false) {
+      const el = document.getElementById(id);
+      el.textContent = text;
+      el.className = 'settings-msg ' + (isError ? 'settings-msg-error' : 'settings-msg-ok');
+      setTimeout(() => { el.className = 'settings-msg hidden'; }, 3000);
+    }
+
+    async function loadSettings() {
+      const s = await apiFetch('/api/settings');
+      document.getElementById('app-name-val').value = s.app_name;
+      document.getElementById('new-username-val').placeholder = s.username;
+      const logo = document.getElementById('settings-logo');
+      if (logo) logo.textContent = s.app_name;
+      document.title = t('settings_title') + ' — ' + s.app_name;
+    }
+
+    async function loadTags() {
+      const tags = await apiFetch('/api/tags');
+      const list = document.getElementById('settings-tags-list');
+      if (!tags || tags.length === 0) {
+        list.innerHTML = `<p class="muted-text">${t('settings_no_tags')}</p>`;
+        return;
+      }
+      list.innerHTML = tags.map(tag => tagRowHTML(tag)).join('');
+    }
+
+    function tagRowHTML(tag) {
+      return `
+        <div class="tag-row" id="tag-row-${tag.id}">
+          <span class="tag-pill" style="background:${tag.color}">${esc(tag.name)}</span>
+          <div style="margin-left:auto;display:flex;gap:2px;flex-shrink:0">
+            <button type="button" class="icon-btn" onclick="startEditTag(${tag.id}, '${escAttr(tag.name)}', '${tag.color}')" title="Edit">✎</button>
+            <button type="button" class="icon-btn danger" onclick="deleteTag(${tag.id})" title="Delete">×</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function startEditTag(id, name, color) {
+      const row = document.getElementById(`tag-row-${id}`);
+      row.innerHTML = `
+        <input type="color" id="edit-color-${id}" value="${color}"
+               style="width:32px;height:32px;padding:2px;border-radius:4px;border:1px solid var(--border);background:var(--bg);cursor:pointer;flex-shrink:0;">
+        <input type="text" id="edit-name-${id}" value="${escAttr(name)}" style="flex:1;margin:0 6px;"
+               onkeydown="if(event.key==='Enter'){saveTag(${id})}else if(event.key==='Escape'){loadTags()}">
+        <button type="button" class="btn-primary" style="padding:4px 10px;font-size:12px;" onclick="saveTag(${id})">Save</button>
+        <button type="button" class="btn-secondary" style="padding:4px 10px;font-size:12px;" onclick="loadTags()">Cancel</button>
+      `;
+      const nameInput = document.getElementById(`edit-name-${id}`);
+      nameInput.focus();
+      nameInput.select();
+    }
+
+    async function saveTag(id) {
+      const name = document.getElementById(`edit-name-${id}`).value.trim();
+      const color = document.getElementById(`edit-color-${id}`).value;
+      if (!name) return;
+      try {
+        await apiFetch(`/api/tags/${id}`, 'PUT', { name, color });
+        loadTags();
+      } catch (err) {
+        if (err.status === 409) alert(t('settings_tag_exists'));
+        else alert(err.message);
+      }
+    }
+
+    async function saveAppSettings(e) {
+      e.preventDefault();
+      const appName = document.getElementById('app-name-val').value.trim();
+      if (!appName) return;
+      try {
+        await apiFetch('/api/settings', 'PUT', { app_name: appName });
+        document.getElementById('settings-logo').textContent = appName;
+        document.title = t('settings_title') + ' — ' + appName;
+        showMsg('msg-app', t('settings_saved'));
+      } catch (err) {
+        showMsg('msg-app', err.message, true);
+      }
+    }
+
+    async function changeUsername(e) {
+      e.preventDefault();
+      const newUsername = document.getElementById('new-username-val').value.trim();
+      const password = document.getElementById('pw-for-username').value;
+      try {
+        await apiFetch('/api/settings/username', 'PUT', { new_username: newUsername, current_password: password });
+        document.getElementById('form-username').reset();
+        showMsg('msg-username', t('settings_username_changed'));
+        loadSettings();
+      } catch (err) {
+        showMsg('msg-username', err.message, true);
+      }
+    }
+
+    async function changePassword(e) {
+      e.preventDefault();
+      const current = document.getElementById('current-pw').value;
+      const next = document.getElementById('new-pw').value;
+      const confirm = document.getElementById('confirm-pw').value;
+      if (next !== confirm) {
+        showMsg('msg-password', t('settings_password_mismatch'), true);
+        return;
+      }
+      try {
+        await apiFetch('/api/settings/password', 'PUT', { current_password: current, new_password: next });
+        document.getElementById('form-password').reset();
+        showMsg('msg-password', t('settings_password_changed'));
+      } catch (err) {
+        showMsg('msg-password', err.message, true);
+      }
+    }
+
+    async function addTag(e) {
+      e.preventDefault();
+      const name = document.getElementById('new-tag-name').value.trim();
+      const color = document.getElementById('new-tag-color').value;
+      try {
+        await apiFetch('/api/tags', 'POST', { name, color });
+        document.getElementById('new-tag-name').value = '';
+        loadTags();
+        showMsg('msg-tag', '');
+      } catch (err) {
+        if (err.status === 409) {
+          showMsg('msg-tag', t('settings_tag_exists'), true);
+        } else {
+          showMsg('msg-tag', err.message, true);
+        }
+      }
+    }
+
+    async function deleteTag(id) {
+      if (!confirm(t('settings_tag_delete_confirm'))) return;
+      try {
+        await apiFetch(`/api/tags/${id}`, 'DELETE');
+        loadTags();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    function esc(str) {
+      return String(str)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function escAttr(str) {
+      return String(str).replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+    }
+
+    // Apply locale strings to static labels
+    function applyLocale() {
+      const map = {
+        'lbl-general': 'settings_section_general',
+        'lbl-account': 'settings_section_account',
+        'lbl-tags-heading': 'settings_section_tags',
+        'lbl-app-name': 'settings_app_name_label',
+        'btn-save-app': 'btn_save',
+        'lbl-change-username': 'settings_change_username_heading',
+        'lbl-new-username': 'settings_new_username',
+        'lbl-pw-for-username': 'settings_current_password',
+        'btn-change-username': 'settings_change_username_btn',
+        'lbl-change-password': 'settings_change_password_heading',
+        'lbl-current-pw': 'settings_current_password',
+        'lbl-new-pw': 'settings_new_password',
+        'lbl-confirm-pw': 'settings_confirm_password',
+        'btn-change-pw': 'settings_change_password_btn',
+        'btn-add-tag': 'btn_add',
+        'back-link': 'settings_back',
+        'settings-heading': 'settings_title',
+      };
+      for (const [id, key] of Object.entries(map)) {
+        const el = document.getElementById(id) || document.querySelector('.' + id);
+        if (el) el.textContent = t(key);
+      }
+      const nameInput = document.getElementById('new-tag-name');
+      if (nameInput) nameInput.placeholder = t('settings_tag_name_placeholder');
+      const appInput = document.getElementById('app-name-val');
+      if (appInput) appInput.placeholder = t('settings_app_name_placeholder');
+    }
+
+    applyLocale();
+    loadSettings();
+    loadTags();
+  </script>
+</body>
+</html>

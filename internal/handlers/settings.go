@@ -1,0 +1,99 @@
+package handlers
+
+import (
+	"net/http"
+
+	"simple-kanban/internal/auth"
+)
+
+func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
+	user := auth.UserFromContext(r.Context())
+
+	var appName string
+	h.db.QueryRow(`SELECT value FROM global_settings WHERE key = 'app_name'`).Scan(&appName)
+	if appName == "" {
+		appName = "Kanban"
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"app_name": appName,
+		"username": user.Username,
+	})
+}
+
+func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		AppName string `json:"app_name"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	_, err := h.db.Exec(
+		`INSERT OR REPLACE INTO global_settings (key, value) VALUES ('app_name', ?)`,
+		req.AppName,
+	)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "db error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"app_name": req.AppName})
+}
+
+func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	user := auth.UserFromContext(r.Context())
+
+	var req struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	if !h.auth.CheckPassword(user.PasswordHash, req.CurrentPassword) {
+		writeError(w, http.StatusUnauthorized, "current password is incorrect")
+		return
+	}
+	if req.NewPassword == "" {
+		writeError(w, http.StatusBadRequest, "new password cannot be empty")
+		return
+	}
+
+	hash, err := h.auth.HashPassword(req.NewPassword)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	h.db.Exec(`UPDATE users SET password_hash = ? WHERE id = ?`, hash, user.ID)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) ChangeUsername(w http.ResponseWriter, r *http.Request) {
+	user := auth.UserFromContext(r.Context())
+
+	var req struct {
+		NewUsername     string `json:"new_username"`
+		CurrentPassword string `json:"current_password"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	if req.NewUsername == "" {
+		writeError(w, http.StatusBadRequest, "username cannot be empty")
+		return
+	}
+	if !h.auth.CheckPassword(user.PasswordHash, req.CurrentPassword) {
+		writeError(w, http.StatusUnauthorized, "current password is incorrect")
+		return
+	}
+
+	_, err := h.db.Exec(`UPDATE users SET username = ? WHERE id = ?`, req.NewUsername, user.ID)
+	if err != nil {
+		writeError(w, http.StatusConflict, "username already taken")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"username": req.NewUsername})
+}
