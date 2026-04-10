@@ -1,0 +1,8 @@
+# Compiled binary
+kanban
+
+# Database and persistent data
+data/
+
+# macOS
+.DS_Store
