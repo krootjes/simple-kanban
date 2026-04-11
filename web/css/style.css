@@ -466,6 +466,21 @@ main {
 /* ---- FORM ---- */
 .form-group { margin-bottom: 13px; }
 
+.due-date-input-row { display: flex; align-items: center; gap: 6px; }
+.due-date-input-row input[type="date"] { flex: 1; }
+.btn-clear-date {
+  background: transparent;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.btn-clear-date:hover { background: var(--danger); color: #fff; }
+
 .form-group label {
   display: block;
   font-size: 11px;

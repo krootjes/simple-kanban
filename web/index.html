@@ -49,7 +49,10 @@
         </div>
         <div class="form-group">
           <label id="lbl-card-due">Due Date</label>
-          <input type="date" id="card-due-date">
+          <div class="due-date-input-row">
+            <input type="date" id="card-due-date" oninput="updateClearDueDateBtn()" onchange="updateClearDueDateBtn()">
+            <button type="button" id="card-clear-due" class="btn-clear-date hidden" onclick="clearDueDate()">× Clear</button>
+          </div>
         </div>
         <div class="form-group">
           <label id="lbl-card-tags">Tags</label>

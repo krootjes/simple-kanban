@@ -9,6 +9,16 @@ import (
 	"simple-kanban/internal/models"
 )
 
+// normalizeDueDate trims any time component from a date string returned by the
+// SQLite driver (e.g. "2026-04-18T00:00:00Z" → "2026-04-18").
+func normalizeDueDate(s *string) *string {
+	if s == nil || len(*s) <= 10 {
+		return s
+	}
+	v := (*s)[:10]
+	return &v
+}
+
 func (h *Handler) GetCards(w http.ResponseWriter, r *http.Request) {
 	user := auth.UserFromContext(r.Context())
 	rows, err := h.db.Query(
@@ -26,6 +36,7 @@ func (h *Handler) GetCards(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var c models.Card
 		rows.Scan(&c.ID, &c.UserID, &c.ColumnID, &c.Title, &c.Description, &c.DueDate, &c.Position, &c.CreatedAt)
+		c.DueDate = normalizeDueDate(c.DueDate)
 		c.Tags = h.getCardTags(c.ID)
 		cards = append(cards, c)
 	}
@@ -85,6 +96,7 @@ func (h *Handler) CreateCard(w http.ResponseWriter, r *http.Request) {
 	h.db.QueryRow(
 		`SELECT id, user_id, column_id, title, description, due_date, position, created_at FROM cards WHERE id = ?`, id,
 	).Scan(&card.ID, &card.UserID, &card.ColumnID, &card.Title, &card.Description, &card.DueDate, &card.Position, &card.CreatedAt)
+	card.DueDate = normalizeDueDate(card.DueDate)
 	card.Tags = h.getCardTags(id)
 	writeJSON(w, http.StatusCreated, card)
 }
@@ -126,6 +138,7 @@ func (h *Handler) UpdateCard(w http.ResponseWriter, r *http.Request) {
 	h.db.QueryRow(
 		`SELECT id, user_id, column_id, title, description, due_date, position, created_at FROM cards WHERE id = ?`, id,
 	).Scan(&card.ID, &card.UserID, &card.ColumnID, &card.Title, &card.Description, &card.DueDate, &card.Position, &card.CreatedAt)
+	card.DueDate = normalizeDueDate(card.DueDate)
 	card.Tags = h.getCardTags(id)
 	writeJSON(w, http.StatusOK, card)
 }

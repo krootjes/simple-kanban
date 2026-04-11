@@ -351,12 +351,13 @@ function showCardModal(cardId, columnId = null) {
     titleEl.textContent = t('card_edit_title');
     document.getElementById('card-title').value = card.title;
     document.getElementById('card-desc').value = card.description || '';
-    document.getElementById('card-due-date').value = card.due_date || '';
+    document.getElementById('card-due-date').value = (card.due_date || '').slice(0, 10);
     deleteBtn.classList.remove('hidden');
   } else {
     titleEl.textContent = t('card_add_title');
     deleteBtn.classList.add('hidden');
   }
+  updateClearDueDateBtn();
 
   openModal('card-modal');
   document.getElementById('card-title').focus();
@@ -413,6 +414,16 @@ function getSelectedCardTagIds() {
       return btn.style.background && btn.style.background !== 'transparent';
     })
     .map(btn => parseInt(btn.dataset.tagId));
+}
+
+function updateClearDueDateBtn() {
+  const hasDate = !!document.getElementById('card-due-date').value;
+  document.getElementById('card-clear-due').classList.toggle('hidden', !hasDate);
+}
+
+function clearDueDate() {
+  document.getElementById('card-due-date').value = '';
+  updateClearDueDateBtn();
 }
 
 async function submitCard(e) {
