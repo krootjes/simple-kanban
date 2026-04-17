@@ -36,12 +36,12 @@ body {
 
 /* ---- HEADER ---- */
 .header {
-  height: 52px;
+  min-height: 52px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
-  padding: 0 16px;
+  padding: 6px 16px;
   gap: 12px;
   flex-shrink: 0;
   z-index: 10;
@@ -69,10 +69,11 @@ body {
   height: 44px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto;
   align-items: center;
   padding: 0 16px;
-  gap: 16px;
+  gap: 0;
   flex-shrink: 0;
 }
 
@@ -83,10 +84,22 @@ body {
   gap: 5px;
   overflow-x: auto;
   scrollbar-width: none;
-  flex: 1;
   min-width: 0;
 }
 .tag-filter::-webkit-scrollbar { display: none; }
+
+/* ---- CATEGORY FILTER ---- */
+.category-filter {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-left: 12px;
+}
+.category-filter::-webkit-scrollbar { display: none; }
+.category-filter:empty { display: none; }
+.category-filter:not(:empty) { border-left: 1px solid var(--border); margin-left: 12px; }
 
 .filter-btn {
   padding: 3px 10px;
@@ -108,10 +121,16 @@ body {
 /* ---- QUICK ADD ---- */
 .quick-add-wrap {
   display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-width: 640px;
+  width: 100%;
+}
+
+.quick-add-row {
+  display: flex;
   align-items: center;
   gap: 6px;
-  max-width: 600px;
-  width: 100%;
 }
 
 .quick-add-col-select {
@@ -144,11 +163,11 @@ body {
 
 .quick-add-tag-sel {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 4px;
-  overflow-x: auto;
-  scrollbar-width: none;
 }
-.quick-add-tag-sel::-webkit-scrollbar { display: none; }
+.quick-add-tag-sel:empty { display: none; }
 
 /* ---- BOARD ---- */
 main {
@@ -264,6 +283,22 @@ main {
   border: 2px dashed var(--accent) !important;
 }
 .card-dragging { box-shadow: 0 8px 24px rgba(0,0,0,0.6); transform: rotate(0.8deg); }
+
+/* ---- CARD TOP ROW (title + category dot) ---- */
+.card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.card-top .card-title { flex: 1; }
+
+.category-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
 
 .card-title { font-size: 13px; font-weight: 500; color: var(--text); line-height: 1.4; }
 
@@ -625,15 +660,15 @@ textarea { resize: vertical; min-height: 68px; }
 
 .settings-container {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(160px, 0.7fr) minmax(360px, 3fr);
+  grid-template-columns: minmax(180px, 1fr) minmax(260px, 2fr) minmax(180px, 1fr);
   gap: 14px;
   align-items: start;
   width: 100%;
 }
 
 .account-forms-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 20px;
 }
 
@@ -661,19 +696,62 @@ textarea { resize: vertical; min-height: 68px; }
   margin-top: 4px;
 }
 
-.account-forms-grid > div {
-  border-right: 1px solid var(--border);
-  padding-right: 20px;
-}
-.account-forms-grid > div:last-child {
-  border-right: none;
-  padding-right: 0;
-  padding-left: 0;
+.account-forms-grid > div + div {
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
 }
 
 .settings-tags-list {
   margin-bottom: 4px;
 }
+
+
+.tag-category-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 10px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.tag-category-select {
+  width: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  cursor: pointer;
+  outline: none;
+  flex-shrink: 0;
+}
+.tag-category-select:focus { border-color: var(--border-focus); }
+.tag-category-select.is-placeholder { color: var(--muted); }
+
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted-light);
+  font-weight: normal;
+  text-transform: none;
+  letter-spacing: normal;
+  margin-bottom: 0;
+}
+.toggle-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+}
+.toggle-text { flex: 1; }
 
 .form-actions {
   display: flex;

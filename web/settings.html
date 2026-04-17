@@ -36,6 +36,13 @@
                      oninput="previewAccentColor(this.value)">
             </div>
           </div>
+          <div class="form-group">
+            <label id="lbl-enforce-restriction">Tag Category Restriction</label>
+            <label class="toggle-label">
+              <input type="checkbox" id="enforce-restriction-val" onchange="saveAppSettings(null)">
+              <span class="toggle-text">Enforce: only show tags from the selected category</span>
+            </label>
+          </div>
           <div class="form-actions">
             <button type="submit" class="btn-primary" id="btn-save-app">Save</button>
             <span id="msg-app" class="settings-msg hidden"></span>
@@ -43,18 +50,32 @@
         </form>
       </section>
 
-      <!-- Tags -->
+      <!-- Tag Categories + Tags (single card) -->
       <section class="settings-card">
-        <h2 class="settings-section-title" id="lbl-tags-heading">Tags</h2>
+
+        <h2 class="settings-section-title" id="lbl-tag-categories-heading">Tag Categories</h2>
+        <div id="settings-categories-list" class="settings-tags-list"></div>
+        <form id="form-add-category" onsubmit="addCategory(event)">
+          <div class="tag-add-row">
+            <input type="text" id="new-category-name" placeholder="Category name" required>
+            <input type="color" id="new-category-color" value="#6366f1" title="Pick color">
+            <button type="submit" class="btn-primary" id="btn-add-category">Add</button>
+          </div>
+          <span id="msg-category" class="settings-msg hidden"></span>
+        </form>
+
+        <h2 class="settings-section-title" id="lbl-tags-heading" style="margin-top:20px;">Tags</h2>
         <div id="settings-tags-list" class="settings-tags-list"></div>
         <form id="form-add-tag" onsubmit="addTag(event)">
           <div class="tag-add-row">
             <input type="text" id="new-tag-name" placeholder="Tag name" required>
             <input type="color" id="new-tag-color" value="#6366f1" title="Pick color">
+            <select id="new-tag-category" class="tag-category-select is-placeholder" title="Category" onchange="updateCategorySelectStyle(this)"></select>
             <button type="submit" class="btn-primary" id="btn-add-tag">Add</button>
           </div>
           <span id="msg-tag" class="settings-msg hidden"></span>
         </form>
+
       </section>
 
       <!-- Account -->
@@ -110,6 +131,8 @@
     const L = window.LOCALE || {};
     const t = k => L[k] || k;
 
+    let settingsCategories = [];
+
     async function apiFetch(path, method = 'GET', body = null) {
       const opts = { method, headers: {} };
       if (body !== null) {
@@ -155,6 +178,7 @@
     function previewAccentColor(hex) {
       applyAccentColor(hex);
       document.getElementById('new-tag-color').value = hex;
+      document.getElementById('new-category-color').value = hex;
     }
 
     function resetAccentColor() {
@@ -172,8 +196,110 @@
       const accent = s.accent_color || DEFAULT_ACCENT;
       document.getElementById('accent-color-val').value = accent;
       document.getElementById('new-tag-color').value = accent;
+      document.getElementById('new-category-color').value = accent;
       applyAccentColor(accent);
+      document.getElementById('enforce-restriction-val').checked = s.enforce_tag_category_restriction === 'true';
     }
+
+    // ---- TAG CATEGORIES ----
+
+    async function loadCategories() {
+      settingsCategories = await apiFetch('/api/tag-categories') || [];
+      const list = document.getElementById('settings-categories-list');
+      if (settingsCategories.length === 0) {
+        list.innerHTML = `<p class="muted-text">No categories yet.</p>`;
+      } else {
+        list.innerHTML = settingsCategories.map(cat => categoryRowHTML(cat)).join('');
+      }
+      // Update category selects in tag forms
+      refreshCategorySelects();
+    }
+
+    function categoryRowHTML(cat) {
+      return `
+        <div class="tag-row" id="cat-row-${cat.id}">
+          <span class="category-dot" style="background:${cat.color};width:12px;height:12px;flex-shrink:0;margin-right:4px;"></span>
+          <span style="font-size:13px;font-weight:500;">${esc(cat.name)}</span>
+          <div style="margin-left:auto;display:flex;gap:2px;flex-shrink:0">
+            <button type="button" class="icon-btn" onclick="startEditCategory(${cat.id}, '${escAttr(cat.name)}', '${cat.color}')" title="Edit">✎</button>
+            <button type="button" class="icon-btn danger" onclick="deleteCategory(${cat.id})" title="Delete">×</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function startEditCategory(id, name, color) {
+      const row = document.getElementById(`cat-row-${id}`);
+      row.innerHTML = `
+        <input type="color" id="edit-cat-color-${id}" value="${color}"
+               style="width:32px;height:32px;padding:2px;border-radius:4px;border:1px solid var(--border);background:var(--bg);cursor:pointer;flex-shrink:0;">
+        <input type="text" id="edit-cat-name-${id}" value="${escAttr(name)}" style="flex:1;margin:0 6px;"
+               onkeydown="if(event.key==='Enter'){saveCategory(${id})}else if(event.key==='Escape'){loadCategories()}">
+        <button type="button" class="btn-primary" style="padding:4px 10px;font-size:12px;" onclick="saveCategory(${id})">Save</button>
+        <button type="button" class="btn-secondary" style="padding:4px 10px;font-size:12px;" onclick="loadCategories()">Cancel</button>
+      `;
+      const nameInput = document.getElementById(`edit-cat-name-${id}`);
+      nameInput.focus();
+      nameInput.select();
+    }
+
+    async function saveCategory(id) {
+      const name = document.getElementById(`edit-cat-name-${id}`).value.trim();
+      const color = document.getElementById(`edit-cat-color-${id}`).value;
+      if (!name) return;
+      try {
+        await apiFetch(`/api/tag-categories/${id}`, 'PUT', { name, color });
+        loadCategories();
+        loadTags();
+      } catch (err) {
+        if (err.status === 409) alert('A category with that name already exists.');
+        else alert(err.message);
+      }
+    }
+
+    async function addCategory(e) {
+      e.preventDefault();
+      const name = document.getElementById('new-category-name').value.trim();
+      const color = document.getElementById('new-category-color').value;
+      try {
+        await apiFetch('/api/tag-categories', 'POST', { name, color });
+        document.getElementById('new-category-name').value = '';
+        loadCategories();
+        showMsg('msg-category', '');
+      } catch (err) {
+        if (err.status === 409) showMsg('msg-category', 'A category with that name already exists.', true);
+        else showMsg('msg-category', err.message, true);
+      }
+    }
+
+    async function deleteCategory(id) {
+      if (!confirm('Delete this category? All cards assigned to it will lose their category.')) return;
+      try {
+        await apiFetch(`/api/tag-categories/${id}`, 'DELETE');
+        loadCategories();
+        loadTags();
+      } catch (err) {
+        if (err.status === 409) alert(err.message);
+        else alert(err.message);
+      }
+    }
+
+    function refreshCategorySelects() {
+      const options = `<option value="" disabled>Select category...</option>` +
+        settingsCategories.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+      document.querySelectorAll('.tag-category-select').forEach(sel => {
+        const current = sel.value;
+        sel.innerHTML = options;
+        sel.value = current;
+        updateCategorySelectStyle(sel);
+      });
+    }
+
+    function updateCategorySelectStyle(sel) {
+      sel.classList.toggle('is-placeholder', !sel.value);
+    }
+
+    // ---- TAGS ----
 
     async function loadTags() {
       const tags = await apiFetch('/api/tags');
@@ -186,24 +312,32 @@
     }
 
     function tagRowHTML(tag) {
+      const cat = settingsCategories.find(c => c.id === tag.tag_category_id);
       return `
         <div class="tag-row" id="tag-row-${tag.id}">
+          ${cat ? `<span class="tag-category-badge" style="border-color:${cat.color};color:${cat.color}">${esc(cat.name)}</span>` : ''}
           <span class="tag-pill" style="background:${tag.color}">${esc(tag.name)}</span>
           <div style="margin-left:auto;display:flex;gap:2px;flex-shrink:0">
-            <button type="button" class="icon-btn" onclick="startEditTag(${tag.id}, '${escAttr(tag.name)}', '${tag.color}')" title="Edit">✎</button>
+            <button type="button" class="icon-btn" onclick="startEditTag(${tag.id}, '${escAttr(tag.name)}', '${tag.color}', ${tag.tag_category_id || 'null'})" title="Edit">✎</button>
             <button type="button" class="icon-btn danger" onclick="deleteTag(${tag.id})" title="Delete">×</button>
           </div>
         </div>
       `;
     }
 
-    function startEditTag(id, name, color) {
+    function startEditTag(id, name, color, categoryId) {
+      const catOptions = `<option value="" disabled>Select category...</option>` +
+        settingsCategories.map(c =>
+          `<option value="${c.id}" ${c.id === categoryId ? 'selected' : ''}>${esc(c.name)}</option>`
+        ).join('');
+
       const row = document.getElementById(`tag-row-${id}`);
       row.innerHTML = `
         <input type="color" id="edit-color-${id}" value="${color}"
                style="width:32px;height:32px;padding:2px;border-radius:4px;border:1px solid var(--border);background:var(--bg);cursor:pointer;flex-shrink:0;">
         <input type="text" id="edit-name-${id}" value="${escAttr(name)}" style="flex:1;margin:0 6px;"
                onkeydown="if(event.key==='Enter'){saveTag(${id})}else if(event.key==='Escape'){loadTags()}">
+        <select id="edit-category-${id}" class="tag-category-select" style="max-width:110px;font-size:12px;padding:4px 6px;">${catOptions}</select>
         <button type="button" class="btn-primary" style="padding:4px 10px;font-size:12px;" onclick="saveTag(${id})">Save</button>
         <button type="button" class="btn-secondary" style="padding:4px 10px;font-size:12px;" onclick="loadTags()">Cancel</button>
       `;
@@ -215,9 +349,11 @@
     async function saveTag(id) {
       const name = document.getElementById(`edit-name-${id}`).value.trim();
       const color = document.getElementById(`edit-color-${id}`).value;
+      const catVal = document.getElementById(`edit-category-${id}`).value;
+      const tagCategoryId = catVal ? parseInt(catVal) : null;
       if (!name) return;
       try {
-        await apiFetch(`/api/tags/${id}`, 'PUT', { name, color });
+        await apiFetch(`/api/tags/${id}`, 'PUT', { name, color, tag_category_id: tagCategoryId });
         loadTags();
       } catch (err) {
         if (err.status === 409) alert(t('settings_tag_exists'));
@@ -226,18 +362,23 @@
     }
 
     async function saveAppSettings(e) {
-      e.preventDefault();
+      if (e) e.preventDefault();
       const appName = document.getElementById('app-name-val').value.trim();
       if (!appName) return;
       const accentColor = document.getElementById('accent-color-val').value;
+      const enforceRestriction = document.getElementById('enforce-restriction-val').checked ? 'true' : 'false';
       try {
-        await apiFetch('/api/settings', 'PUT', { app_name: appName, accent_color: accentColor });
+        await apiFetch('/api/settings', 'PUT', {
+          app_name: appName,
+          accent_color: accentColor,
+          enforce_tag_category_restriction: enforceRestriction,
+        });
         document.getElementById('settings-logo').textContent = appName;
         document.title = t('settings_title') + ' — ' + appName;
         applyAccentColor(accentColor);
-        showMsg('msg-app', t('settings_saved'));
+        if (e) showMsg('msg-app', t('settings_saved'));
       } catch (err) {
-        showMsg('msg-app', err.message, true);
+        if (e) showMsg('msg-app', err.message, true);
       }
     }
 
@@ -277,17 +418,19 @@
       e.preventDefault();
       const name = document.getElementById('new-tag-name').value.trim();
       const color = document.getElementById('new-tag-color').value;
+      const catVal = document.getElementById('new-tag-category').value;
+      if (!catVal) {
+        showMsg('msg-tag', 'Please select a category.', true);
+        return;
+      }
+      const tagCategoryId = parseInt(catVal);
       try {
-        await apiFetch('/api/tags', 'POST', { name, color });
+        await apiFetch('/api/tags', 'POST', { name, color, tag_category_id: tagCategoryId });
         document.getElementById('new-tag-name').value = '';
         loadTags();
         showMsg('msg-tag', '');
       } catch (err) {
-        if (err.status === 409) {
-          showMsg('msg-tag', t('settings_tag_exists'), true);
-        } else {
-          showMsg('msg-tag', err.message, true);
-        }
+        showMsg('msg-tag', err.message, true);
       }
     }
 
@@ -329,6 +472,7 @@
         'lbl-confirm-pw': 'settings_confirm_password',
         'btn-change-pw': 'settings_change_password_btn',
         'btn-add-tag': 'btn_add',
+        'btn-add-category': 'btn_add',
         'back-link': 'settings_back',
         'settings-heading': 'settings_title',
       };
@@ -344,7 +488,7 @@
 
     applyLocale();
     loadSettings();
-    loadTags();
+    loadCategories().then(() => loadTags());
   </script>
 </body>
 </html>

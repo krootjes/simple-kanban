@@ -19,10 +19,16 @@ func normalizeDueDate(s *string) *string {
 	return &v
 }
 
+func (h *Handler) enforceTagCategoryRestriction() bool {
+	var val string
+	h.db.QueryRow(`SELECT value FROM global_settings WHERE key = 'enforce_tag_category_restriction'`).Scan(&val)
+	return val == "true"
+}
+
 func (h *Handler) GetCards(w http.ResponseWriter, r *http.Request) {
 	user := auth.UserFromContext(r.Context())
 	rows, err := h.db.Query(
-		`SELECT id, user_id, column_id, title, description, due_date, position, created_at
+		`SELECT id, user_id, column_id, title, description, due_date, position, tag_category_id, created_at
 		 FROM cards WHERE user_id = ? ORDER BY column_id, position`,
 		user.ID,
 	)
@@ -35,7 +41,7 @@ func (h *Handler) GetCards(w http.ResponseWriter, r *http.Request) {
 	cards := []models.Card{}
 	for rows.Next() {
 		var c models.Card
-		rows.Scan(&c.ID, &c.UserID, &c.ColumnID, &c.Title, &c.Description, &c.DueDate, &c.Position, &c.CreatedAt)
+		rows.Scan(&c.ID, &c.UserID, &c.ColumnID, &c.Title, &c.Description, &c.DueDate, &c.Position, &c.TagCategoryID, &c.CreatedAt)
 		c.DueDate = normalizeDueDate(c.DueDate)
 		c.Tags = h.getCardTags(c.ID)
 		cards = append(cards, c)
@@ -45,7 +51,7 @@ func (h *Handler) GetCards(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) getCardTags(cardID int64) []models.Tag {
 	rows, err := h.db.Query(
-		`SELECT t.id, t.user_id, t.name, t.color FROM tags t
+		`SELECT t.id, t.user_id, t.name, t.color, t.tag_category_id FROM tags t
 		 JOIN card_tags ct ON ct.tag_id = t.id WHERE ct.card_id = ?`, cardID,
 	)
 	if err != nil {
@@ -55,32 +61,51 @@ func (h *Handler) getCardTags(cardID int64) []models.Tag {
 	tags := []models.Tag{}
 	for rows.Next() {
 		var t models.Tag
-		rows.Scan(&t.ID, &t.UserID, &t.Name, &t.Color)
+		rows.Scan(&t.ID, &t.UserID, &t.Name, &t.Color, &t.TagCategoryID)
 		tags = append(tags, t)
 	}
 	return tags
 }
 
+func (h *Handler) validateTagsForCategory(tagIDs []int64, categoryID int64) bool {
+	for _, tagID := range tagIDs {
+		var catID *int64
+		h.db.QueryRow(`SELECT tag_category_id FROM tags WHERE id = ?`, tagID).Scan(&catID)
+		if catID == nil || *catID != categoryID {
+			return false
+		}
+	}
+	return true
+}
+
 func (h *Handler) CreateCard(w http.ResponseWriter, r *http.Request) {
 	user := auth.UserFromContext(r.Context())
 	var req struct {
-		ColumnID    int64   `json:"column_id"`
-		Title       string  `json:"title"`
-		Description string  `json:"description"`
-		DueDate     *string `json:"due_date"`
-		TagIDs      []int64 `json:"tag_ids"`
+		ColumnID      int64   `json:"column_id"`
+		Title         string  `json:"title"`
+		Description   string  `json:"description"`
+		DueDate       *string `json:"due_date"`
+		TagIDs        []int64 `json:"tag_ids"`
+		TagCategoryID *int64  `json:"tag_category_id"`
 	}
 	if err := readJSON(r, &req); err != nil || req.Title == "" || req.ColumnID == 0 {
 		writeError(w, http.StatusBadRequest, "column_id and title are required")
 		return
 	}
 
+	if req.TagCategoryID != nil && h.enforceTagCategoryRestriction() && len(req.TagIDs) > 0 {
+		if !h.validateTagsForCategory(req.TagIDs, *req.TagCategoryID) {
+			writeError(w, http.StatusBadRequest, "one or more tags do not belong to the selected category")
+			return
+		}
+	}
+
 	var maxPos int
 	h.db.QueryRow(`SELECT COALESCE(MAX(position), -1) FROM cards WHERE column_id = ? AND user_id = ?`, req.ColumnID, user.ID).Scan(&maxPos)
 
 	res, err := h.db.Exec(
-		`INSERT INTO cards (user_id, column_id, title, description, due_date, position) VALUES (?, ?, ?, ?, ?, ?)`,
-		user.ID, req.ColumnID, req.Title, req.Description, req.DueDate, maxPos+1,
+		`INSERT INTO cards (user_id, column_id, title, description, due_date, position, tag_category_id) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		user.ID, req.ColumnID, req.Title, req.Description, req.DueDate, maxPos+1, req.TagCategoryID,
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "db error")
@@ -94,8 +119,8 @@ func (h *Handler) CreateCard(w http.ResponseWriter, r *http.Request) {
 
 	var card models.Card
 	h.db.QueryRow(
-		`SELECT id, user_id, column_id, title, description, due_date, position, created_at FROM cards WHERE id = ?`, id,
-	).Scan(&card.ID, &card.UserID, &card.ColumnID, &card.Title, &card.Description, &card.DueDate, &card.Position, &card.CreatedAt)
+		`SELECT id, user_id, column_id, title, description, due_date, position, tag_category_id, created_at FROM cards WHERE id = ?`, id,
+	).Scan(&card.ID, &card.UserID, &card.ColumnID, &card.Title, &card.Description, &card.DueDate, &card.Position, &card.TagCategoryID, &card.CreatedAt)
 	card.DueDate = normalizeDueDate(card.DueDate)
 	card.Tags = h.getCardTags(id)
 	writeJSON(w, http.StatusCreated, card)
@@ -106,19 +131,27 @@ func (h *Handler) UpdateCard(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 
 	var req struct {
-		Title       string  `json:"title"`
-		Description string  `json:"description"`
-		DueDate     *string `json:"due_date"`
-		TagIDs      []int64 `json:"tag_ids"`
+		Title         string  `json:"title"`
+		Description   string  `json:"description"`
+		DueDate       *string `json:"due_date"`
+		TagIDs        []int64 `json:"tag_ids"`
+		TagCategoryID *int64  `json:"tag_category_id"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 
+	if req.TagCategoryID != nil && h.enforceTagCategoryRestriction() && len(req.TagIDs) > 0 {
+		if !h.validateTagsForCategory(req.TagIDs, *req.TagCategoryID) {
+			writeError(w, http.StatusBadRequest, "one or more tags do not belong to the selected category")
+			return
+		}
+	}
+
 	res, err := h.db.Exec(
-		`UPDATE cards SET title = ?, description = ?, due_date = ? WHERE id = ? AND user_id = ?`,
-		req.Title, req.Description, req.DueDate, id, user.ID,
+		`UPDATE cards SET title = ?, description = ?, due_date = ?, tag_category_id = ? WHERE id = ? AND user_id = ?`,
+		req.Title, req.Description, req.DueDate, req.TagCategoryID, id, user.ID,
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "db error")
@@ -136,8 +169,8 @@ func (h *Handler) UpdateCard(w http.ResponseWriter, r *http.Request) {
 
 	var card models.Card
 	h.db.QueryRow(
-		`SELECT id, user_id, column_id, title, description, due_date, position, created_at FROM cards WHERE id = ?`, id,
-	).Scan(&card.ID, &card.UserID, &card.ColumnID, &card.Title, &card.Description, &card.DueDate, &card.Position, &card.CreatedAt)
+		`SELECT id, user_id, column_id, title, description, due_date, position, tag_category_id, created_at FROM cards WHERE id = ?`, id,
+	).Scan(&card.ID, &card.UserID, &card.ColumnID, &card.Title, &card.Description, &card.DueDate, &card.Position, &card.TagCategoryID, &card.CreatedAt)
 	card.DueDate = normalizeDueDate(card.DueDate)
 	card.Tags = h.getCardTags(id)
 	writeJSON(w, http.StatusOK, card)

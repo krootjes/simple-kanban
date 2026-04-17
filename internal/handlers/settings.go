@@ -18,17 +18,25 @@ func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
 	var accentColor string
 	h.db.QueryRow(`SELECT value FROM global_settings WHERE key = 'accent_color'`).Scan(&accentColor)
 
+	var enforceRestriction string
+	h.db.QueryRow(`SELECT value FROM global_settings WHERE key = 'enforce_tag_category_restriction'`).Scan(&enforceRestriction)
+	if enforceRestriction == "" {
+		enforceRestriction = "false"
+	}
+
 	writeJSON(w, http.StatusOK, map[string]string{
-		"app_name":     appName,
-		"username":     user.Username,
-		"accent_color": accentColor,
+		"app_name":                          appName,
+		"username":                          user.Username,
+		"accent_color":                      accentColor,
+		"enforce_tag_category_restriction":  enforceRestriction,
 	})
 }
 
 func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		AppName     string `json:"app_name"`
-		AccentColor string `json:"accent_color"`
+		AppName                         string `json:"app_name"`
+		AccentColor                     string `json:"accent_color"`
+		EnforceTagCategoryRestriction   string `json:"enforce_tag_category_restriction"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request")
@@ -51,7 +59,18 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 		)
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"app_name": req.AppName, "accent_color": req.AccentColor})
+	if req.EnforceTagCategoryRestriction == "true" || req.EnforceTagCategoryRestriction == "false" {
+		h.db.Exec(
+			`INSERT OR REPLACE INTO global_settings (key, value) VALUES ('enforce_tag_category_restriction', ?)`,
+			req.EnforceTagCategoryRestriction,
+		)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"app_name":                         req.AppName,
+		"accent_color":                     req.AccentColor,
+		"enforce_tag_category_restriction": req.EnforceTagCategoryRestriction,
+	})
 }
 
 func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {

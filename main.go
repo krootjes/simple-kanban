@@ -55,6 +55,11 @@ func main() {
 		r.Delete("/api/cards/{id}", h.DeleteCard)
 		r.Put("/api/cards/{id}/move", h.MoveCard)
 
+		r.Get("/api/tag-categories", h.GetTagCategories)
+		r.Post("/api/tag-categories", h.CreateTagCategory)
+		r.Put("/api/tag-categories/{id}", h.UpdateTagCategory)
+		r.Delete("/api/tag-categories/{id}", h.DeleteTagCategory)
+
 		r.Get("/api/tags", h.GetTags)
 		r.Post("/api/tags", h.CreateTag)
 		r.Put("/api/tags/{id}", h.UpdateTag)

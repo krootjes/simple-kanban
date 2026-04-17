@@ -10,8 +10,10 @@ const state = {
   columns: [],
   cards: [],
   tags: [],
+  categories: [],
   settings: { app_name: 'Kanban' },
   filterTagId: null,
+  filterCategoryId: null,
 };
 
 let dragging = false;
@@ -19,6 +21,7 @@ let dragging = false;
 // Modal state
 let currentCardId = null;
 let currentCardColumnId = null;
+let currentCardCategoryId = null;
 let currentColumnModalId = null;
 
 // Quick-add tag selection (Set of tag IDs)
@@ -61,15 +64,17 @@ async function init() {
 }
 
 async function loadAll() {
-  const [columns, cards, tags, settings] = await Promise.all([
+  const [columns, cards, tags, categories, settings] = await Promise.all([
     apiFetch('/api/columns'),
     apiFetch('/api/cards'),
     apiFetch('/api/tags'),
+    apiFetch('/api/tag-categories'),
     apiFetch('/api/settings'),
   ]);
   state.columns = columns || [];
   state.cards = cards || [];
   state.tags = tags || [];
+  state.categories = categories || [];
   state.settings = settings || { app_name: 'Kanban' };
   if (state.settings.accent_color) applyAccentColor(state.settings.accent_color);
 }
@@ -107,17 +112,22 @@ function render() {
   if (nameEl) nameEl.textContent = name;
 
   renderTagFilter();
+  renderCategoryFilter();
   renderBoard();
   renderQuickAddColumnSelect();
+  renderQuickAddCategorySelect();
   renderQuickAddTags();
 }
 
 function renderTagFilter() {
   const bar = document.getElementById('tag-filter');
+  const visibleTags = state.filterCategoryId !== null
+    ? state.tags.filter(t => t.tag_category_id === state.filterCategoryId)
+    : state.tags;
   bar.innerHTML = `
     <button class="filter-btn ${state.filterTagId === null ? 'active' : ''}"
             onclick="setFilter(null)">${t('filter_all')}</button>
-    ${state.tags.map(tag => {
+    ${visibleTags.map(tag => {
       const active = state.filterTagId === tag.id;
       const style = active
         ? `background:${tag.color};border-color:${tag.color}`
@@ -131,6 +141,41 @@ function renderTagFilter() {
 function setFilter(tagId) {
   state.filterTagId = tagId;
   renderTagFilter();
+  renderBoard();
+}
+
+function renderCategoryFilter() {
+  const bar = document.getElementById('category-filter');
+  if (!bar) return;
+  if (state.categories.length === 0) {
+    bar.innerHTML = '';
+    return;
+  }
+  bar.innerHTML = `
+    <button class="filter-btn ${state.filterCategoryId === null ? 'active' : ''}"
+            onclick="setCategoryFilter(null)">${t('filter_all')}</button>
+    ${state.categories.map(cat => {
+      const active = state.filterCategoryId === cat.id;
+      const style = active
+        ? `background:${cat.color};border-color:${cat.color}`
+        : `border-color:${cat.color};color:${cat.color}`;
+      return `<button class="filter-btn ${active ? 'active' : ''}" style="${style}"
+                      onclick="setCategoryFilter(${cat.id})">${esc(cat.name)}</button>`;
+    }).join('')}
+  `;
+}
+
+function setCategoryFilter(categoryId) {
+  state.filterCategoryId = categoryId;
+  // Reset tag filter when the selected tag no longer belongs to the new category
+  if (state.filterTagId !== null) {
+    const tag = state.tags.find(t => t.id === state.filterTagId);
+    if (!tag || (categoryId !== null && tag.tag_category_id !== categoryId)) {
+      state.filterTagId = null;
+    }
+  }
+  renderTagFilter();
+  renderCategoryFilter();
   renderBoard();
 }
 
@@ -202,9 +247,11 @@ function columnHTML(col) {
   const allCards = state.cards
     .filter(c => c.column_id === col.id)
     .sort((a, b) => a.position - b.position);
-  const visibleCards = state.filterTagId !== null
-    ? allCards.filter(c => c.tags.some(tag => tag.id === state.filterTagId))
-    : allCards;
+  const visibleCards = allCards.filter(c => {
+    const tagMatch = state.filterTagId === null || c.tags.some(tag => tag.id === state.filterTagId);
+    const catMatch = state.filterCategoryId === null || c.tag_category_id === state.filterCategoryId;
+    return tagMatch && catMatch;
+  });
 
   return `
     <div class="column" data-id="${col.id}">
@@ -232,10 +279,17 @@ function cardHTML(card) {
   const isToday = due && due.getTime() === today.getTime();
   const dueFmt = due ? due.toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
 
+  const category = card.tag_category_id
+    ? state.categories.find(c => c.id === card.tag_category_id)
+    : null;
+
   return `
     <div class="card${overdue ? ' overdue' : ''}" data-id="${card.id}"
          onclick="if (!dragging) showCardModal(${card.id})">
-      <div class="card-title">${esc(card.title)}</div>
+      <div class="card-top">
+        <div class="card-title">${esc(card.title)}</div>
+        ${category ? `<span class="category-dot" style="background:${category.color}" title="${esc(category.name)}"></span>` : ''}
+      </div>
       ${card.description ? `<div class="card-desc">${esc(card.description)}</div>` : ''}
       <div class="card-footer">
         <div class="card-tags">
@@ -260,6 +314,7 @@ function initQuickAdd() {
       input.blur();
     }
   });
+
 }
 
 function renderQuickAddColumnSelect() {
@@ -271,9 +326,35 @@ function renderQuickAddColumnSelect() {
   ).join('');
 }
 
+function updateCategorySelectStyle(sel) {
+  sel.classList.toggle('is-placeholder', !sel.value);
+}
+
+function renderQuickAddCategorySelect() {
+  const sel = document.getElementById('quick-add-category');
+  const currentVal = sel.value;
+  sel.innerHTML = `<option value="" disabled${!currentVal ? ' selected' : ''}>Select category...</option>` +
+    state.categories.map(c =>
+      `<option value="${c.id}" ${String(c.id) === currentVal ? 'selected' : ''}>${esc(c.name)}</option>`
+    ).join('');
+  updateCategorySelectStyle(sel);
+}
+
+function onQuickAddCategoryChange(sel) {
+  updateCategorySelectStyle(sel);
+  quickAddTagIds.clear();
+  renderQuickAddTags();
+}
+
 function renderQuickAddTags() {
   const container = document.getElementById('quick-add-tag-sel');
-  container.innerHTML = state.tags.map(tag => {
+  const catId = document.getElementById('quick-add-category')?.value;
+
+  const visibleTags = catId
+    ? state.tags.filter(t => t.tag_category_id === parseInt(catId))
+    : state.tags;
+
+  container.innerHTML = visibleTags.map(tag => {
     const active = quickAddTagIds.has(tag.id);
     const style = active
       ? `background:${tag.color};border-color:${tag.color};color:#fff`
@@ -305,6 +386,9 @@ async function submitQuickAdd() {
   const colId = parseInt(document.getElementById('quick-add-col').value);
   if (!colId) return;
 
+  const catVal = document.getElementById('quick-add-category').value;
+  const tagCategoryId = catVal ? parseInt(catVal) : null;
+
   try {
     await apiFetch('/api/cards', 'POST', {
       column_id: colId,
@@ -312,11 +396,13 @@ async function submitQuickAdd() {
       description: '',
       due_date: null,
       tag_ids: [...quickAddTagIds],
+      tag_category_id: tagCategoryId,
     });
     input.value = '';
     input.focus();
     await loadAll();
     renderBoard();
+    renderQuickAddTags();
   } catch (e) {
     alert(t('error_quick_add') + ': ' + e.message);
   }
@@ -338,16 +424,18 @@ function showCardModal(cardId, columnId = null) {
   document.getElementById('lbl-card-title').textContent = t('card_field_title');
   document.getElementById('lbl-card-desc').textContent = t('card_field_description');
   document.getElementById('lbl-card-due').textContent = t('card_field_due_date');
+  document.getElementById('lbl-card-category').textContent = t('card_field_category');
   document.getElementById('lbl-card-tags').textContent = t('card_field_tags');
 
-  const selectedTagIds = cardId
-    ? (state.cards.find(c => c.id === cardId)?.tags || []).map(tag => tag.id)
-    : [];
+  const card = cardId ? state.cards.find(c => c.id === cardId) : null;
+  currentCardCategoryId = card ? (card.tag_category_id || null) : null;
 
-  renderCardTagSelector(selectedTagIds);
+  const selectedTagIds = card ? (card.tags || []).map(tag => tag.id) : [];
 
-  if (cardId) {
-    const card = state.cards.find(c => c.id === cardId);
+  renderCardCategorySelector(currentCardCategoryId);
+  renderCardTagSelector(selectedTagIds, currentCardCategoryId);
+
+  if (card) {
     titleEl.textContent = t('card_edit_title');
     document.getElementById('card-title').value = card.title;
     document.getElementById('card-desc').value = card.description || '';
@@ -363,19 +451,79 @@ function showCardModal(cardId, columnId = null) {
   document.getElementById('card-title').focus();
 }
 
-function renderCardTagSelector(selectedTagIds) {
+function renderCardCategorySelector(selectedCategoryId) {
+  const container = document.getElementById('card-category-selector');
+  const noneStyle = !selectedCategoryId
+    ? 'background:var(--muted);border-color:var(--muted);color:#fff'
+    : 'border-color:var(--border);color:var(--muted-light)';
+
+  container.innerHTML =
+    `<button type="button" class="tag-select-pill" style="${noneStyle}"
+             data-category-id="" onclick="selectCardCategory(this)">None</button>` +
+    state.categories.map(cat => {
+      const active = selectedCategoryId === cat.id;
+      const style = active
+        ? `background:${cat.color};border-color:${cat.color};color:#fff`
+        : `border-color:${cat.color};color:${cat.color}`;
+      return `<button type="button" class="tag-select-pill" style="${style}"
+                      data-category-id="${cat.id}" data-color="${cat.color}"
+                      onclick="selectCardCategory(this)">${esc(cat.name)}</button>`;
+    }).join('');
+}
+
+function selectCardCategory(btn) {
+  // Deselect all
+  document.querySelectorAll('#card-category-selector .tag-select-pill').forEach(b => {
+    const color = b.dataset.color;
+    if (color) {
+      b.style.background = 'transparent';
+      b.style.color = color;
+      b.style.borderColor = color;
+    } else {
+      b.style.background = 'transparent';
+      b.style.color = 'var(--muted-light)';
+      b.style.borderColor = 'var(--border)';
+    }
+  });
+
+  // Select clicked
+  const color = btn.dataset.color;
+  if (color) {
+    btn.style.background = color;
+    btn.style.color = '#fff';
+    btn.style.borderColor = color;
+  } else {
+    btn.style.background = 'var(--muted)';
+    btn.style.color = '#fff';
+    btn.style.borderColor = 'var(--muted)';
+  }
+
+  currentCardCategoryId = btn.dataset.categoryId ? parseInt(btn.dataset.categoryId) : null;
+
+  // Re-render tag selector filtered to new category (preserve current selection)
+  const selectedTagIds = getSelectedCardTagIds();
+  renderCardTagSelector(selectedTagIds, currentCardCategoryId);
+}
+
+function renderCardTagSelector(selectedTagIds, categoryId) {
   const container = document.getElementById('card-tag-selector');
   const hint = document.getElementById('card-no-tags-hint');
 
-  if (state.tags.length === 0) {
+  const visibleTags = categoryId
+    ? state.tags.filter(t => t.tag_category_id === categoryId)
+    : state.tags;
+
+  if (visibleTags.length === 0) {
     container.innerHTML = '';
-    hint.textContent = t('card_no_tags_hint');
+    hint.textContent = enforce && categoryId
+      ? t('card_no_tags_in_category')
+      : t('card_no_tags_hint');
     hint.classList.remove('hidden');
     return;
   }
 
   hint.classList.add('hidden');
-  container.innerHTML = state.tags.map(tag => {
+  container.innerHTML = visibleTags.map(tag => {
     const active = selectedTagIds.includes(tag.id);
     const style = active
       ? `background:${tag.color};border-color:${tag.color};color:#fff`
@@ -390,9 +538,6 @@ function renderCardTagSelector(selectedTagIds) {
 
 function toggleCardTag(btn) {
   const color = btn.dataset.color;
-  const isActive = btn.style.background !== 'transparent' && btn.style.background !== '';
-
-  // Check by whether background is set to the color
   const currentBg = btn.style.background;
   const active = currentBg && currentBg !== 'transparent';
 
@@ -409,10 +554,7 @@ function toggleCardTag(btn) {
 
 function getSelectedCardTagIds() {
   return [...document.querySelectorAll('#card-tag-selector .tag-select-pill')]
-    .filter(btn => {
-      const color = btn.dataset.color;
-      return btn.style.background && btn.style.background !== 'transparent';
-    })
+    .filter(btn => btn.style.background && btn.style.background !== 'transparent')
     .map(btn => parseInt(btn.dataset.tagId));
 }
 
@@ -432,13 +574,17 @@ async function submitCard(e) {
   const description = document.getElementById('card-desc').value.trim();
   const dueDate = document.getElementById('card-due-date').value || null;
   const tagIds = getSelectedCardTagIds();
+  const tagCategoryId = currentCardCategoryId;
 
   try {
     if (currentCardId) {
-      await apiFetch(`/api/cards/${currentCardId}`, 'PUT', { title, description, due_date: dueDate, tag_ids: tagIds });
+      await apiFetch(`/api/cards/${currentCardId}`, 'PUT', {
+        title, description, due_date: dueDate, tag_ids: tagIds, tag_category_id: tagCategoryId,
+      });
     } else {
       await apiFetch('/api/cards', 'POST', {
-        column_id: currentCardColumnId, title, description, due_date: dueDate, tag_ids: tagIds,
+        column_id: currentCardColumnId, title, description, due_date: dueDate,
+        tag_ids: tagIds, tag_category_id: tagCategoryId,
       });
     }
     closeModal('card-modal');

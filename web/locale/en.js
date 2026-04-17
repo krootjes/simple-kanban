@@ -38,8 +38,10 @@ window.LOCALE = {
   card_field_description: 'Description',
   card_field_description_placeholder: 'Optional description...',
   card_field_due_date: 'Due Date',
+  card_field_category: 'Category',
   card_field_tags: 'Tags',
   card_no_tags_hint: 'No tags yet — add them in Settings.',
+  card_no_tags_in_category: 'No tags in this category — add them in Settings.',
   card_delete_confirm: 'Delete this card?',
 
   // Buttons

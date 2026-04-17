@@ -11,9 +11,12 @@
     <span class="logo" id="app-name">Kanban</span>
     <div class="header-center">
       <div class="quick-add-wrap">
-        <select id="quick-add-col" class="quick-add-col-select"></select>
-        <input type="text" id="quick-add-input" autocomplete="off"
-               placeholder="Quick add card... (Enter to create)">
+        <div class="quick-add-row">
+          <select id="quick-add-col" class="quick-add-col-select"></select>
+          <select id="quick-add-category" class="quick-add-col-select is-placeholder" onchange="onQuickAddCategoryChange(this)"></select>
+          <input type="text" id="quick-add-input" autocomplete="off"
+                 placeholder="Quick add card... (Enter to create)">
+        </div>
         <div id="quick-add-tag-sel" class="quick-add-tag-sel"></div>
       </div>
     </div>
@@ -25,6 +28,7 @@
 
   <div class="toolbar">
     <div id="tag-filter" class="tag-filter"></div>
+    <div id="category-filter" class="category-filter"></div>
   </div>
 
   <main>
@@ -53,6 +57,10 @@
             <input type="date" id="card-due-date" oninput="updateClearDueDateBtn()" onchange="updateClearDueDateBtn()">
             <button type="button" id="card-clear-due" class="btn-clear-date hidden" onclick="clearDueDate()">× Clear</button>
           </div>
+        </div>
+        <div class="form-group">
+          <label id="lbl-card-category">Category</label>
+          <div id="card-category-selector" class="card-tag-selector"></div>
         </div>
         <div class="form-group">
           <label id="lbl-card-tags">Tags</label>

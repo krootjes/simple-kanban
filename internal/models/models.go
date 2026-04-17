@@ -22,21 +22,31 @@ type Column struct {
 	CreatedAt string `json:"created_at"`
 }
 
-type Tag struct {
+type TagCategory struct {
 	ID     int64  `json:"id"`
 	UserID int64  `json:"user_id"`
 	Name   string `json:"name"`
 	Color  string `json:"color"`
 }
 
+type Tag struct {
+	ID            int64  `json:"id"`
+	UserID        int64  `json:"user_id"`
+	Name          string `json:"name"`
+	Color         string `json:"color"`
+	TagCategoryID *int64 `json:"tag_category_id"`
+}
+
 type Card struct {
-	ID          int64   `json:"id"`
-	UserID      int64   `json:"user_id"`
-	ColumnID    int64   `json:"column_id"`
-	Title       string  `json:"title"`
-	Description string  `json:"description"`
-	DueDate     *string `json:"due_date"`
-	Position    int     `json:"position"`
-	CreatedAt   string  `json:"created_at"`
-	Tags        []Tag   `json:"tags"`
+	ID            int64        `json:"id"`
+	UserID        int64        `json:"user_id"`
+	ColumnID      int64        `json:"column_id"`
+	Title         string       `json:"title"`
+	Description   string       `json:"description"`
+	DueDate       *string      `json:"due_date"`
+	Position      int          `json:"position"`
+	CreatedAt     string       `json:"created_at"`
+	Tags          []Tag        `json:"tags"`
+	TagCategoryID *int64       `json:"tag_category_id"`
+	TagCategory   *TagCategory `json:"tag_category,omitempty"`
 }
