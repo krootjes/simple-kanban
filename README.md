@@ -6,13 +6,16 @@ A lightweight, self-hosted Kanban board. Single Docker container, no external de
 
 ## Features
 
-- Columns — add, rename, delete, drag to reorder
-- Cards — title, description, due date, tags; drag between columns
-- Tags — user-managed with color picker, filter bar in toolbar
-- Quick-add bar in header — pick column, type title, attach tags, press Enter
-- Settings page — app name, username/password, tag management
-- Dark mode
-- Multi-user capable at the data layer (UI is single-user)
+- **Columns** — add, rename, delete, drag to reorder
+- **Cards** — title, description, due date, category, tags; drag between columns
+- **Tag Categories** — group tags into named, colored categories; colored dot on each card indicates its category
+- **Tags** — user-managed with color picker; same tag name allowed across different categories
+- **Filtering** — tag filter bar and category filter bar in the toolbar; selecting a category scopes the tag filter to that category's tags
+- **Quick-add bar** — in the header: pick column and category, type a title, select tags, press Enter
+- **Settings page** — app name, accent color, username/password, tag category and tag management
+- **Enforce category restriction** — optional setting to restrict cards to only tags from their assigned category
+- **Dark mode**
+- **Multi-user capable** at the data layer (UI is single-user)
 
 ## Running with Docker
 
